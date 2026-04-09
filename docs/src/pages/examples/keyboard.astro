@@ -1,0 +1,90 @@
+---
+import DocsLayout from "../../layouts/DocsLayout.astro";
+import CodeBlock from "../../components/CodeBlock.astro";
+import PageNavigation from "../../components/PageNavigation.astro";
+
+const readingState = `import ForgeObservers
+
+let keyboard = KeyboardObserver()
+
+// Current snapshot
+let state = keyboard.state
+
+if state.isVisible {
+    adjustBottomPadding(state.height)
+}
+
+// Also available:
+// state.animationDuration — system keyboard animation duration`;
+
+const subscribing = `for await state in keyboard.stateStream {
+    withAnimation(.easeOut(duration: state.animationDuration)) {
+        bottomPadding = state.height
+    }
+}`;
+
+const practicalExample = `import SwiftUI
+import ForgeObservers
+
+struct ChatInputView: View {
+    let keyboard: KeyboardObserving
+
+    @State private var message = ""
+    @State private var keyboardHeight: CGFloat = 0
+    @State private var animationDuration: TimeInterval = 0.25
+
+    var body: some View {
+        VStack {
+            ScrollView {
+                // Message list
+            }
+
+            HStack {
+                TextField("Message", text: $message)
+                    .textFieldStyle(.roundedBorder)
+                Button("Send") { sendMessage() }
+            }
+            .padding()
+        }
+        .padding(.bottom, keyboardHeight)
+        .animation(
+            .easeOut(duration: animationDuration),
+            value: keyboardHeight
+        )
+        .task {
+            for await state in keyboard.stateStream {
+                keyboardHeight = state.height
+                animationDuration = state.animationDuration
+            }
+        }
+    }
+
+    private func sendMessage() { /* ... */ }
+}`;
+---
+
+<DocsLayout title="Keyboard" section="examples">
+  <h1>Keyboard</h1>
+  <p class="text-lg text-muted-foreground mt-1 mb-8">Basic usage of <code>KeyboardObserver</code> for tracking keyboard visibility and frame changes.</p>
+
+  <h2>Reading Current State</h2>
+  <p><code>KeyboardState</code> is a struct with <code>isVisible</code>, <code>height</code>, and <code>animationDuration</code>. Height is zero when hidden.</p>
+  <CodeBlock code={readingState} title="Reading keyboard state" />
+
+  <h2>Subscribing to Changes</h2>
+  <p>Use <code>stateStream</code> to animate alongside the keyboard. The stream provides the system animation duration so your UI stays in sync.</p>
+  <CodeBlock code={subscribing} title="Subscribing to stateStream" />
+
+  <h2>Practical Example</h2>
+  <p>A chat input view that adjusts its bottom padding to stay above the keyboard, using the system animation duration for smooth transitions.</p>
+  <CodeBlock code={practicalExample} title="ChatInputView.swift" />
+
+  <p class="text-sm text-muted-foreground mt-6"><strong>Note:</strong> SwiftUI provides built-in keyboard avoidance for <code>ScrollView</code> and <code>TextField</code>. Use <code>KeyboardObserver</code> when you need custom layout behavior, precise height values, or want to drive animations that go beyond the built-in handling.</p>
+
+  <PageNavigation
+    prevHref="examples/app-lifecycle"
+    prevLabel="App Lifecycle"
+    nextHref="examples/appearance"
+    nextLabel="Appearance"
+  />
+</DocsLayout>

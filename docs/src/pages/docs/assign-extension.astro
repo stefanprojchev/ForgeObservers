@@ -1,0 +1,192 @@
+---
+import DocsLayout from "../../layouts/DocsLayout.astro";
+import CodeBlock from "../../components/CodeBlock.astro";
+import PageNavigation from "../../components/PageNavigation.astro";
+
+const directAssign = `// When the stream element type matches the property type exactly:
+await connectivity.statusStream
+    .assign(to: \\.status, on: self)
+
+// Equivalent to:
+for await value in connectivity.statusStream where !Task.isCancelled {
+    self.status = value
+}`;
+
+const directAssignSignature = `extension AsyncSequence where Self: Sendable {
+    @MainActor
+    func assign<Root: AnyObject>(
+        to keyPath: ReferenceWritableKeyPath<Root, Element>,
+        on object: Root
+    ) async
+}`;
+
+const transformedAssign = `// When you need to convert the stream value before assigning:
+await connectivity.statusStream
+    .assign(to: \\.isOffline, on: self) { status in
+        !status.isConnected
+    }
+
+// Or using .map before .assign:
+await connectivity.statusStream
+    .map { !$0.isConnected }
+    .assign(to: \\.isOffline, on: self)`;
+
+const transformedAssignSignature = `extension AsyncSequence where Self: Sendable {
+    @MainActor
+    func assign<Root: AnyObject, V>(
+        to keyPath: ReferenceWritableKeyPath<Root, V>,
+        on object: Root,
+        transform: @Sendable @escaping (Element) -> V
+    ) async
+}`;
+
+const mainActorExplanation = `// Both .assign overloads are @MainActor because they write
+// to properties that are typically observed by SwiftUI views.
+//
+// This means they automatically hop to the main actor before
+// writing, so you don't need to worry about threading.
+
+@Observable
+final class ViewModel {
+    // These properties are read by SwiftUI on the main thread.
+    // .assign writes to them on @MainActor, which is correct.
+    var isOffline = false
+    var keyboardHeight: CGFloat = 0
+    var appearance: AppAppearance = .light
+}`;
+
+const completeViewModel = `import ForgeObservers
+
+@Observable
+final class DashboardViewModel {
+    private let connectivity: ConnectivityObserving
+    private let lifecycle: AppLifecycleObserving
+    private let keyboard: KeyboardObserving
+    private let appearance: AppearanceObserving
+    private let notifications: NotificationPermissionObserving
+
+    var isOffline = false
+    var isInBackground = false
+    var keyboardHeight: CGFloat = 0
+    var isDarkMode = false
+    var showNotificationPrompt = false
+
+    init(
+        connectivity: ConnectivityObserving,
+        lifecycle: AppLifecycleObserving,
+        keyboard: KeyboardObserving,
+        appearance: AppearanceObserving,
+        notifications: NotificationPermissionObserving
+    ) {
+        self.connectivity = connectivity
+        self.lifecycle = lifecycle
+        self.keyboard = keyboard
+        self.appearance = appearance
+        self.notifications = notifications
+    }
+
+    func startObserving() async {
+        async let _: () = connectivity.statusStream
+            .map { !$0.isConnected }
+            .assign(to: \\.isOffline, on: self)
+
+        async let _: () = lifecycle.stateStream
+            .map { $0 == .background }
+            .assign(to: \\.isInBackground, on: self)
+
+        async let _: () = keyboard.stateStream
+            .map { $0.height }
+            .assign(to: \\.keyboardHeight, on: self)
+
+        async let _: () = appearance.appearanceStream
+            .map { $0 == .dark }
+            .assign(to: \\.isDarkMode, on: self)
+
+        async let _: () = notifications.statusStream
+            .map { $0 == .notDetermined }
+            .assign(to: \\.showNotificationPrompt, on: self)
+    }
+}`;
+
+const swiftuiUsage = `struct DashboardView: View {
+    @State private var viewModel: DashboardViewModel
+
+    init(/* inject observers */) {
+        _viewModel = State(initialValue: DashboardViewModel(
+            connectivity: ConnectivityObserver(),
+            lifecycle: AppLifecycleObserver(),
+            keyboard: KeyboardObserver(),
+            appearance: AppearanceObserver(),
+            notifications: NotificationPermissionObserver()
+        ))
+    }
+
+    var body: some View {
+        VStack {
+            if viewModel.isOffline {
+                OfflineBanner()
+            }
+            if viewModel.showNotificationPrompt {
+                NotificationPromptCard()
+            }
+            MainContent()
+        }
+        .padding(.bottom, viewModel.keyboardHeight)
+        .task {
+            await viewModel.startObserving()
+        }
+    }
+}`;
+
+const cancellationBehavior = `// .assign respects cooperative cancellation.
+// It checks Task.isCancelled between each iteration:
+
+for try await value in self where !Task.isCancelled {
+    object[keyPath: keyPath] = value
+}
+
+// When the task is cancelled (e.g., SwiftUI view disappears),
+// the loop exits immediately. No dangling writes occur.`;
+---
+
+<DocsLayout title="Assign Extension" section="docs">
+  <h1>Assign Extension</h1>
+  <p class="text-lg text-muted-foreground mt-1 mb-8">Bind AsyncStream values directly to object properties with a Combine-like <code>.assign(to:on:)</code> API.</p>
+
+  <h2>Direct Assignment</h2>
+  <p>When the stream's element type matches the property type, use the direct <code>.assign(to:on:)</code> overload. It iterates the stream and writes each emitted value to the specified key path.</p>
+  <CodeBlock code={directAssign} title="Direct assignment" />
+
+  <h3>Signature</h3>
+  <CodeBlock code={directAssignSignature} title="AsyncSequence+Assign.swift" />
+
+  <h2>Transformed Assignment</h2>
+  <p>When the stream element type differs from the property type, you have two options: pass a <code>transform</code> closure, or use <code>.map</code> before <code>.assign</code>. Both approaches are equivalent.</p>
+  <CodeBlock code={transformedAssign} title="Transformed assignment" />
+
+  <h3>Signature</h3>
+  <CodeBlock code={transformedAssignSignature} title="AsyncSequence+Assign.swift" />
+
+  <h2>@MainActor Safety</h2>
+  <p>Both <code>.assign</code> overloads are marked <code>@MainActor</code>. This means they automatically dispatch writes to the main actor, ensuring thread safety when updating properties observed by SwiftUI views.</p>
+  <p>You do not need to manually hop to the main thread before calling <code>.assign</code> -- it handles that for you.</p>
+  <CodeBlock code={mainActorExplanation} title="Why @MainActor" />
+
+  <h2>Cancellation</h2>
+  <p>The <code>.assign</code> extension checks <code>Task.isCancelled</code> between each iteration. When the parent task is cancelled (e.g., a SwiftUI view disappears), the loop exits immediately with no dangling writes.</p>
+  <CodeBlock code={cancellationBehavior} title="Cancellation safety" />
+
+  <h2>Complete ViewModel Example</h2>
+  <p>Here's a full ViewModel that observes five system streams concurrently using <code>async let</code> and <code>.assign</code>. Each stream runs in its own child task, and all are cancelled together when the parent task ends.</p>
+  <CodeBlock code={completeViewModel} title="DashboardViewModel.swift" />
+
+  <p>Wire it up in SwiftUI with a single <code>.task</code> modifier:</p>
+  <CodeBlock code={swiftuiUsage} title="DashboardView.swift" />
+
+  <PageNavigation
+    prevHref="docs/async-streams"
+    prevLabel="Async Streams"
+    nextHref="examples/connectivity"
+    nextLabel="Connectivity"
+  />
+</DocsLayout>

@@ -1,0 +1,181 @@
+---
+import DocsLayout from "../../layouts/DocsLayout.astro";
+import CodeBlock from "../../components/CodeBlock.astro";
+import PageNavigation from "../../components/PageNavigation.astro";
+
+const viewModelCode = `import SwiftUI
+import ForgeObservers
+
+@Observable
+final class OfflineAwareViewModel {
+    private let connectivity: ConnectivityObserving
+    private let keyboard: KeyboardObserving
+    private let appearance: AppearanceObserving
+
+    var isOffline = false
+    var keyboardHeight: CGFloat = 0
+    var isDarkMode = false
+
+    init(
+        connectivity: ConnectivityObserving,
+        keyboard: KeyboardObserving,
+        appearance: AppearanceObserving
+    ) {
+        self.connectivity = connectivity
+        self.keyboard = keyboard
+        self.appearance = appearance
+    }
+
+    func startObserving() async {
+        async let _: () = connectivity.statusStream
+            .map { !$0.isConnected }
+            .assign(to: \\.isOffline, on: self)
+
+        async let _: () = keyboard.stateStream
+            .map { $0.height }
+            .assign(to: \\.keyboardHeight, on: self)
+
+        async let _: () = appearance.appearanceStream
+            .map { $0 == .dark }
+            .assign(to: \\.isDarkMode, on: self)
+    }
+}`;
+
+const swiftuiViewCode = `struct ContentView: View {
+    @State private var viewModel: OfflineAwareViewModel
+
+    init() {
+        let connectivity = ConnectivityObserver()
+        let keyboard = KeyboardObserver()
+        let appearance = AppearanceObserver()
+
+        _viewModel = State(
+            initialValue: OfflineAwareViewModel(
+                connectivity: connectivity,
+                keyboard: keyboard,
+                appearance: appearance
+            )
+        )
+    }
+
+    var body: some View {
+        VStack {
+            if viewModel.isOffline {
+                offlineBanner
+            }
+
+            Text("Keyboard height: \\(viewModel.keyboardHeight, specifier: "%.0f")")
+            Text("Dark mode: \\(viewModel.isDarkMode ? "Yes" : "No")")
+        }
+        .task {
+            await viewModel.startObserving()
+        }
+    }
+
+    private var offlineBanner: some View {
+        HStack {
+            Image(systemName: "wifi.slash")
+            Text("No internet connection")
+        }
+        .padding()
+        .frame(maxWidth: .infinity)
+        .background(.red.opacity(0.1))
+        .foregroundStyle(.red)
+    }
+}`;
+
+const lifecycleViewModelCode = `@Observable
+final class SessionViewModel {
+    private let lifecycle: AppLifecycleObserving
+    private let connectivity: ConnectivityObserving
+
+    var isInBackground = false
+    var lastRefresh: Date?
+
+    init(
+        lifecycle: AppLifecycleObserving,
+        connectivity: ConnectivityObserving
+    ) {
+        self.lifecycle = lifecycle
+        self.connectivity = connectivity
+    }
+
+    func startObserving() async {
+        async let _: () = lifecycle.stateStream
+            .map { $0 == .background }
+            .assign(to: \\.isInBackground, on: self)
+
+        async let _: () = observeForRefresh()
+    }
+
+    private func observeForRefresh() async {
+        for await state in lifecycle.stateStream {
+            if state == .active && connectivity.status.isConnected {
+                lastRefresh = Date()
+                await refreshData()
+            }
+        }
+    }
+
+    private func refreshData() async {
+        // Fetch fresh data from server
+    }
+}`;
+
+const directAssignCode = `// Direct assignment — stream element matches property type
+await connectivity.statusStream
+    .assign(to: \\.status, on: self)
+
+// Transformed assignment — map the value before assigning
+await connectivity.statusStream
+    .map { !$0.isConnected }
+    .assign(to: \\.isOffline, on: self)`;
+
+const multipleStreamsCode = `func startObserving() async {
+    // Use async let to observe multiple streams concurrently.
+    // Each stream runs in its own concurrent child task.
+    async let _: () = connectivity.statusStream
+        .map { !$0.isConnected }
+        .assign(to: \\.isOffline, on: self)
+
+    async let _: () = lifecycle.stateStream
+        .map { $0 == .background }
+        .assign(to: \\.isInBackground, on: self)
+
+    async let _: () = keyboard.stateStream
+        .map { $0.height }
+        .assign(to: \\.keyboardHeight, on: self)
+}`;
+---
+
+<DocsLayout title="ViewModel Integration" section="examples">
+  <h1>ViewModel Integration</h1>
+  <p class="text-lg text-muted-foreground mt-1 mb-8">Using <code>.assign(to:on:)</code> to bind observer streams to <code>@Observable</code> ViewModel properties.</p>
+
+  <h2>OfflineAwareViewModel</h2>
+  <p>An <code>@Observable</code> ViewModel that tracks connectivity, keyboard, and appearance state using the <code>.assign(to:on:)</code> extension. Each observer is injected via its protocol for testability.</p>
+  <CodeBlock code={viewModelCode} title="OfflineAwareViewModel.swift" />
+
+  <h2>SwiftUI View</h2>
+  <p>The view creates the ViewModel, then starts observation in a <code>.task</code> modifier. When the view disappears, the task is cancelled and all streams stop automatically.</p>
+  <CodeBlock code={swiftuiViewCode} title="ContentView.swift" />
+
+  <h2>Lifecycle-Aware ViewModel</h2>
+  <p>Combining lifecycle and connectivity observers to refresh data when the app returns to the foreground while online.</p>
+  <CodeBlock code={lifecycleViewModelCode} title="SessionViewModel.swift" />
+
+  <h2>Assign Patterns</h2>
+  <p>The <code>.assign(to:on:)</code> extension supports both direct and transformed assignment:</p>
+  <CodeBlock code={directAssignCode} title="Assign.swift" />
+
+  <h3>Multiple Streams</h3>
+  <p>Use <code>async let</code> to observe multiple streams concurrently within a single <code>startObserving()</code> method. All streams are tied to the same structured concurrency scope and cancel together.</p>
+  <CodeBlock code={multipleStreamsCode} title="MultipleStreams.swift" />
+
+  <PageNavigation
+    prevHref="examples/notification-permission"
+    prevLabel="Notification Permission"
+    nextHref="examples/with-forge-inject"
+    nextLabel="With ForgeInject"
+  />
+</DocsLayout>

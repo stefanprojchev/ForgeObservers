@@ -1,0 +1,192 @@
+---
+import DocsLayout from "../../layouts/DocsLayout.astro";
+import CodeBlock from "../../components/CodeBlock.astro";
+import PageNavigation from "../../components/PageNavigation.astro";
+
+const observerModuleCode = `import ForgeInject
+import ForgeObservers
+
+struct ObserverModule: ForgeRegisterProtocol {
+    func registerDependencies(in container: ForgeContainerProtocol) {
+        container.register(with: .singleton) { _ in
+            ConnectivityObserver() as ConnectivityObserving
+        }
+
+        container.register(with: .singleton) { _ in
+            AppLifecycleObserver() as AppLifecycleObserving
+        }
+
+        container.register(with: .singleton) { _ in
+            KeyboardObserver() as KeyboardObserving
+        }
+
+        // AppearanceObserver has @MainActor init — use mainActorBuilder
+        container.register(with: .singleton, mainActorBuilder: { _ in
+            AppearanceObserver() as AppearanceObserving
+        })
+
+        container.register(with: .singleton) { _ in
+            LocaleObserver() as LocaleObserving
+        }
+
+        // ProtectedDataObserver has @MainActor init — use mainActorBuilder
+        container.register(with: .singleton, mainActorBuilder: { _ in
+            ProtectedDataObserver() as ProtectedDataObserving
+        })
+
+        container.register(with: .singleton) { _ in
+            NotificationPermissionObserver() as NotificationPermissionObserving
+        }
+    }
+}`;
+
+const appEntryCode = `import SwiftUI
+import ForgeInject
+import ForgeObservers
+
+@main
+struct TaskFlowApp: App {
+    init() {
+        let container = ForgeContainer()
+        ObserverModule().registerDependencies(in: container)
+        // Register other modules...
+        ForgeContainer.shared = container
+    }
+
+    var body: some Scene {
+        WindowGroup {
+            ContentView()
+        }
+    }
+}`;
+
+const viewModelCode = `import SwiftUI
+import ForgeInject
+import ForgeObservers
+
+@Observable
+final class DashboardViewModel {
+    @ForgeInject var connectivity: ConnectivityObserving
+    @ForgeInject var lifecycle: AppLifecycleObserving
+    @ForgeInject var keyboard: KeyboardObserving
+    @ForgeInject var appearance: AppearanceObserving
+    @ForgeInject var notifications: NotificationPermissionObserving
+
+    var isOffline = false
+    var isInBackground = false
+    var keyboardHeight: CGFloat = 0
+    var isDarkMode = false
+    var canRequestNotifications = false
+
+    func startObserving() async {
+        async let _: () = connectivity.statusStream
+            .map { !$0.isConnected }
+            .assign(to: \\.isOffline, on: self)
+
+        async let _: () = lifecycle.stateStream
+            .map { $0 == .background }
+            .assign(to: \\.isInBackground, on: self)
+
+        async let _: () = keyboard.stateStream
+            .map { $0.height }
+            .assign(to: \\.keyboardHeight, on: self)
+
+        async let _: () = appearance.appearanceStream
+            .map { $0 == .dark }
+            .assign(to: \\.isDarkMode, on: self)
+
+        async let _: () = notifications.statusStream
+            .map { $0 == .notDetermined }
+            .assign(to: \\.canRequestNotifications, on: self)
+    }
+}`;
+
+const viewCode = `struct DashboardView: View {
+    @State private var viewModel = DashboardViewModel()
+
+    var body: some View {
+        VStack(spacing: 16) {
+            if viewModel.isOffline {
+                Label("No connection", systemImage: "wifi.slash")
+                    .foregroundStyle(.red)
+            }
+
+            if viewModel.canRequestNotifications {
+                // Use ForgePush's PushPermission to request authorization
+                Text("Notifications not yet enabled")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            Spacer()
+        }
+        .padding()
+        .task {
+            await viewModel.startObserving()
+        }
+    }
+}`;
+
+const multiModuleCode = `import ForgeInject
+import ForgeObservers
+
+struct AppDependencies: ForgeRegisterProtocol {
+    func registerDependencies(in container: ForgeContainerProtocol) {
+        ObserverModule().registerDependencies(in: container)
+        NetworkModule().registerDependencies(in: container)
+        AuthModule().registerDependencies(in: container)
+        // Add more modules as your app grows
+    }
+}
+
+@main
+struct TaskFlowApp: App {
+    init() {
+        let container = ForgeContainer()
+        AppDependencies().registerDependencies(in: container)
+        ForgeContainer.shared = container
+    }
+
+    var body: some Scene {
+        WindowGroup {
+            ContentView()
+        }
+    }
+}`;
+---
+
+<DocsLayout title="With ForgeInject" section="examples">
+  <h1>With ForgeInject</h1>
+  <p class="text-lg text-muted-foreground mt-1 mb-8">Registering all observers in a DI container using <a href="https://github.com/stefanprojchev/ForgeInject">ForgeInject</a>.</p>
+
+  <h2>ObserverModule</h2>
+  <p>Create a <code>ForgeRegisterProtocol</code> struct that registers every observer as a singleton. One instance per observer is sufficient for the entire app.</p>
+  <CodeBlock code={observerModuleCode} title="ObserverModule.swift" />
+
+  <p><strong>Two things to note:</strong></p>
+  <ul>
+    <li><code>AppearanceObserver</code> and <code>ProtectedDataObserver</code> have <code>@MainActor init</code> requirements. Use ForgeInject's <code>mainActorBuilder</code> variant to ensure initialization runs on the main actor.</li>
+    <li>All other observers use standard builders with no special requirements.</li>
+  </ul>
+
+  <h2>App Entry Point</h2>
+  <p>Register the module at app launch. The container holds all observers as singletons, ready for resolution anywhere in the app.</p>
+  <CodeBlock code={appEntryCode} title="MyApp.swift" />
+
+  <h2>ViewModel with @ForgeInject</h2>
+  <p>Use <code>@ForgeInject</code> to resolve observers without manual initializer injection. Each property is lazily resolved from the shared container on first access.</p>
+  <CodeBlock code={viewModelCode} title="DashboardViewModel.swift" />
+
+  <h2>SwiftUI View</h2>
+  <p>The view has no awareness of ForgeInject or ForgeObservers. It only interacts with the ViewModel's published properties.</p>
+  <CodeBlock code={viewCode} title="DashboardView.swift" />
+
+  <h2>Composing with Other Modules</h2>
+  <p>In a real app, compose the <code>ObserverModule</code> alongside your other feature modules in a root <code>AppDependencies</code> struct.</p>
+  <CodeBlock code={multiModuleCode} title="AppDependencies.swift" />
+
+  <PageNavigation
+    prevHref="examples/viewmodel-integration"
+    prevLabel="ViewModel Integration"
+  />
+</DocsLayout>

@@ -1,0 +1,203 @@
+---
+import DocsLayout from "../../layouts/DocsLayout.astro";
+import CodeBlock from "../../components/CodeBlock.astro";
+import PageNavigation from "../../components/PageNavigation.astro";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "../../components/starwind/tabs";
+
+const spmDeps = `dependencies: [
+    .package(url: "https://github.com/stefanprojchev/ForgeObservers.git", from: "1.0.0")
+]`;
+
+const spmTarget = `targets: [
+    .target(
+        name: "YourApp",
+        dependencies: ["ForgeObservers"]
+    )
+]`;
+
+const cliCommand = `swift package add-dependency https://github.com/stefanprojchev/ForgeObservers.git --from 1.0.0`;
+
+const basicUsage = `import ForgeObservers
+
+// 1. Create an observer
+let connectivity = ConnectivityObserver()
+
+// 2. Read current state
+print(connectivity.status.isConnected) // true or false
+
+// 3. Subscribe to changes
+for await status in connectivity.statusStream {
+    print("Connected: \\(status.isConnected), via: \\(status.interface)")
+}`;
+
+const swiftuiExample = `import SwiftUI
+import ForgeObservers
+
+struct ContentView: View {
+    let connectivity: ConnectivityObserving
+
+    @State private var isOffline = false
+
+    var body: some View {
+        VStack {
+            if isOffline {
+                Label("No Connection", systemImage: "wifi.slash")
+                    .foregroundStyle(.red)
+            }
+            // ...
+        }
+        .task {
+            for await status in connectivity.statusStream {
+                isOffline = !status.isConnected
+            }
+        }
+    }
+}`;
+
+const viewModelExample = `import ForgeObservers
+
+@Observable
+final class AppViewModel {
+    private let connectivity: ConnectivityObserving
+    private let lifecycle: AppLifecycleObserving
+
+    var isOffline = false
+    var isInBackground = false
+
+    init(
+        connectivity: ConnectivityObserving,
+        lifecycle: AppLifecycleObserving
+    ) {
+        self.connectivity = connectivity
+        self.lifecycle = lifecycle
+    }
+
+    func startObserving() async {
+        async let _: () = connectivity.statusStream
+            .map { !$0.isConnected }
+            .assign(to: \\.isOffline, on: self)
+
+        async let _: () = lifecycle.stateStream
+            .map { $0 == .background }
+            .assign(to: \\.isInBackground, on: self)
+    }
+}`;
+---
+
+<DocsLayout title="Getting Started" section="docs">
+  <h1>Getting Started</h1>
+  <p class="text-lg text-muted-foreground mt-1 mb-8">Install ForgeObservers, create your first observer, and subscribe to system changes.</p>
+
+  <h2>Requirements</h2>
+  <ul>
+    <li>iOS 18+</li>
+    <li>Swift 6.3+ (Xcode 26 or later)</li>
+  </ul>
+
+  <h2>Installation</h2>
+
+  <Tabs defaultValue="xcode" syncKey="install" class="not-prose my-6">
+    <TabsList>
+      <TabsTrigger value="xcode">Xcode UI</TabsTrigger>
+      <TabsTrigger value="package-swift">Package.swift</TabsTrigger>
+      <TabsTrigger value="cli">Swift CLI</TabsTrigger>
+    </TabsList>
+    <TabsContent value="xcode">
+      <div class="mt-4 space-y-2 text-[15px] text-foreground">
+        <ol class="list-decimal space-y-1.5 pl-5">
+          <li>Open your project in Xcode.</li>
+          <li>Go to <strong>File &rarr; Add Package Dependencies&hellip;</strong></li>
+          <li>Paste the repository URL: <code class="rounded bg-muted px-1.5 py-0.5 font-mono text-[13px]">https://github.com/stefanprojchev/ForgeObservers.git</code></li>
+          <li>Set the version rule to <strong>Up to Next Major</strong> from <code class="rounded bg-muted px-1.5 py-0.5 font-mono text-[13px]">1.0.0</code>.</li>
+          <li>Select your app target and click <strong>Add Package</strong>.</li>
+        </ol>
+      </div>
+    </TabsContent>
+    <TabsContent value="package-swift">
+      <CodeBlock code={spmDeps} title="Package.swift -- dependencies" />
+      <CodeBlock code={spmTarget} title="Package.swift -- target" />
+    </TabsContent>
+    <TabsContent value="cli">
+      <CodeBlock code={cliCommand} lang="bash" title="Terminal" />
+    </TabsContent>
+  </Tabs>
+
+  <h2>Basic Usage</h2>
+  <p>Every observer follows the same pattern: create it, read the current state synchronously, and subscribe to an <code>AsyncStream</code> for future changes.</p>
+  <CodeBlock code={basicUsage} title="Example.swift" />
+
+  <h2>SwiftUI Integration</h2>
+  <p>Use SwiftUI's <code>.task</code> modifier to subscribe to observer streams. The stream is automatically cancelled when the view disappears.</p>
+  <CodeBlock code={swiftuiExample} title="ContentView.swift" />
+
+  <h2>ViewModel Integration</h2>
+  <p>For more complex scenarios, inject observers into your ViewModel and use the <code>.assign(to:on:)</code> extension to bind streams to properties. Use <code>async let</code> to observe multiple streams concurrently.</p>
+  <CodeBlock code={viewModelExample} title="AppViewModel.swift" />
+
+  <h2>Observer Reference</h2>
+  <p>ForgeObservers ships with 7 observers covering the most common system events:</p>
+
+  <div class="not-prose my-6 overflow-x-auto">
+    <table class="w-full text-[13px]">
+      <thead>
+        <tr class="border-b border-border/60">
+          <th class="py-2 pr-4 text-left font-medium text-muted-foreground">Observer</th>
+          <th class="py-2 pr-4 text-left font-medium text-muted-foreground">Protocol</th>
+          <th class="py-2 pr-4 text-left font-medium text-muted-foreground">Model</th>
+          <th class="py-2 text-left font-medium text-muted-foreground">Stream</th>
+        </tr>
+      </thead>
+      <tbody class="text-foreground">
+        <tr class="border-b border-border/30">
+          <td class="py-2 pr-4 font-mono text-amber-400">ConnectivityObserver</td>
+          <td class="py-2 pr-4 font-mono">ConnectivityObserving</td>
+          <td class="py-2 pr-4 font-mono">ConnectivityStatus</td>
+          <td class="py-2 font-mono">statusStream</td>
+        </tr>
+        <tr class="border-b border-border/30">
+          <td class="py-2 pr-4 font-mono text-amber-400">AppLifecycleObserver</td>
+          <td class="py-2 pr-4 font-mono">AppLifecycleObserving</td>
+          <td class="py-2 pr-4 font-mono">AppLifecycleState</td>
+          <td class="py-2 font-mono">stateStream</td>
+        </tr>
+        <tr class="border-b border-border/30">
+          <td class="py-2 pr-4 font-mono text-amber-400">KeyboardObserver</td>
+          <td class="py-2 pr-4 font-mono">KeyboardObserving</td>
+          <td class="py-2 pr-4 font-mono">KeyboardState</td>
+          <td class="py-2 font-mono">stateStream</td>
+        </tr>
+        <tr class="border-b border-border/30">
+          <td class="py-2 pr-4 font-mono text-amber-400">AppearanceObserver</td>
+          <td class="py-2 pr-4 font-mono">AppearanceObserving</td>
+          <td class="py-2 pr-4 font-mono">AppAppearance</td>
+          <td class="py-2 font-mono">appearanceStream</td>
+        </tr>
+        <tr class="border-b border-border/30">
+          <td class="py-2 pr-4 font-mono text-amber-400">LocaleObserver</td>
+          <td class="py-2 pr-4 font-mono">LocaleObserving</td>
+          <td class="py-2 pr-4 font-mono">AppLocale</td>
+          <td class="py-2 font-mono">localeStream</td>
+        </tr>
+        <tr class="border-b border-border/30">
+          <td class="py-2 pr-4 font-mono text-amber-400">ProtectedDataObserver</td>
+          <td class="py-2 pr-4 font-mono">ProtectedDataObserving</td>
+          <td class="py-2 pr-4 font-mono">ProtectedDataState</td>
+          <td class="py-2 font-mono">stateStream</td>
+        </tr>
+        <tr>
+          <td class="py-2 pr-4 font-mono text-amber-400">NotificationPermissionObserver</td>
+          <td class="py-2 pr-4 font-mono">NotificationPermissionObserving</td>
+          <td class="py-2 pr-4 font-mono">NotificationPermissionStatus</td>
+          <td class="py-2 font-mono">statusStream</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <p>See the individual observer pages for detailed documentation on each observer.</p>
+
+  <PageNavigation
+    nextHref="docs/connectivity"
+    nextLabel="Connectivity"
+  />
+</DocsLayout>

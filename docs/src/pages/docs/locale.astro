@@ -1,0 +1,118 @@
+---
+import DocsLayout from "../../layouts/DocsLayout.astro";
+import CodeBlock from "../../components/CodeBlock.astro";
+import PageNavigation from "../../components/PageNavigation.astro";
+
+const appLocaleStruct = `public struct AppLocale: Sendable, Equatable {
+    public let languageCode: String
+    public let regionCode: String?
+
+    /// Create from explicit values
+    public init(languageCode: String, regionCode: String? = nil)
+
+    /// Create from the current system Locale
+    public init(from locale: Locale = .current)
+}`;
+
+const localeObservingProtocol = `public protocol LocaleObserving: Sendable {
+    /// The current locale (synchronous read)
+    var current: AppLocale { get }
+
+    /// Stream of locale changes.
+    /// Emits the current value immediately on subscription,
+    /// then emits again whenever the user changes device language or region.
+    var localeStream: AsyncStream<AppLocale> { get }
+}`;
+
+const basicUsage = `import ForgeObservers
+
+let locale = LocaleObserver()
+
+// Read the current locale
+print("Language: \\(locale.current.languageCode)")
+print("Region: \\(locale.current.regionCode ?? "unknown")")
+
+// Subscribe to changes
+Task {
+    for await appLocale in locale.localeStream {
+        print("Locale changed to \\(appLocale.languageCode)")
+        reloadLocalizedStrings()
+    }
+}`;
+
+const viewModelUsage = `@Observable
+final class SettingsViewModel {
+    private let locale: LocaleObserving
+
+    var languageCode = ""
+    var regionCode = ""
+
+    init(locale: LocaleObserving) {
+        self.locale = locale
+        self.languageCode = locale.current.languageCode
+        self.regionCode = locale.current.regionCode ?? ""
+    }
+
+    func startObserving() async {
+        for await appLocale in locale.localeStream {
+            languageCode = appLocale.languageCode
+            regionCode = appLocale.regionCode ?? ""
+        }
+    }
+}`;
+
+const testingExample = `import Foundation
+import Synchronization
+import ForgeObservers
+
+@Test
+func localeObserverReactsToChange() async throws {
+    let center = NotificationCenter()
+    let current = Mutex(AppLocale(languageCode: "en", regionCode: "US"))
+
+    // Inject both the NotificationCenter and a stub localeProvider
+    let observer = LocaleObserver(
+        notificationCenter: center,
+        localeProvider: { current.withLock { $0 } }
+    )
+
+    // Swap the "system" locale, then post the change notification
+    current.withLock { $0 = AppLocale(languageCode: "de", regionCode: "DE") }
+    center.post(name: NSLocale.currentLocaleDidChangeNotification, object: nil)
+    try await Task.sleep(for: .milliseconds(50))
+
+    #expect(observer.current.languageCode == "de")
+}`;
+---
+
+<DocsLayout title="Locale" section="docs">
+  <h1>LocaleObserver</h1>
+  <p class="text-lg text-muted-foreground mt-1 mb-8">Detects locale changes when the user updates device language or region settings.</p>
+
+  <h2>AppLocale</h2>
+  <p>A lightweight struct that captures the language code and optional region code. You can create one from explicit values or from the current system <code>Locale</code>.</p>
+  <CodeBlock code={appLocaleStruct} title="AppLocale.swift" />
+
+  <h2>LocaleObserving Protocol</h2>
+  <p>The protocol exposes the current locale and an async stream. Unlike most other observers, <code>localeStream</code> emits the current value immediately on subscription, so you don't need to read <code>current</code> separately.</p>
+  <CodeBlock code={localeObservingProtocol} title="LocaleObserving.swift" />
+
+  <h2>Usage</h2>
+  <p>Create a <code>LocaleObserver</code> and subscribe to <code>localeStream</code> to react when the user changes their device language or region in Settings.</p>
+  <CodeBlock code={basicUsage} title="Locale.swift" />
+
+  <h2>ViewModel Example</h2>
+  <p>Bind locale properties to a ViewModel for display in your UI.</p>
+  <CodeBlock code={viewModelUsage} title="SettingsViewModel.swift" />
+
+  <h2>Testing</h2>
+  <p><code>LocaleObserver</code> accepts both an injectable <code>NotificationCenter</code> and a <code>localeProvider</code> closure. The provider lets tests return synthetic locales instead of whatever the simulator's real locale happens to be.</p>
+  <CodeBlock code={testingExample} title="Test with injected dependencies" />
+
+  <PageNavigation
+    prevHref="docs/appearance"
+    prevLabel="Appearance"
+    nextHref="docs/protected-data"
+    nextLabel="Protected Data"
+  />
+</DocsLayout>

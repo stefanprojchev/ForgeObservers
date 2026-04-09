@@ -1,0 +1,89 @@
+---
+import DocsLayout from "../../layouts/DocsLayout.astro";
+import CodeBlock from "../../components/CodeBlock.astro";
+import PageNavigation from "../../components/PageNavigation.astro";
+
+const readingState = `import ForgeObservers
+
+// @MainActor required for initialization
+@MainActor
+func setup() {
+    let protectedData = ProtectedDataObserver()
+
+    // Current state — .available or .unavailable
+    if protectedData.state == .available {
+        let secret = try keychain.read("api_key")
+    }
+}`;
+
+const waitUntilAvailable = `// In a background task, wait for the device to be unlocked
+// before accessing the Keychain or encrypted files
+func handleBackgroundRefresh() async {
+    await protectedData.waitUntilAvailable()
+
+    // Safe to access Keychain, Core Data, encrypted files
+    let token = try? keychain.read("refresh_token")
+    await refreshSession(with: token)
+}`;
+
+const practicalExample = `import SwiftUI
+import ForgeObservers
+
+struct SecureContentView: View {
+    let protectedData: ProtectedDataObserving
+
+    @State private var isLocked = false
+    @State private var credentials: Credentials?
+
+    var body: some View {
+        Group {
+            if isLocked {
+                ContentUnavailableView(
+                    "Device Locked",
+                    systemImage: "lock.fill",
+                    description: Text("Unlock your device to view secure content.")
+                )
+            } else if let credentials {
+                DashboardView(credentials: credentials)
+            }
+        }
+        .task {
+            for await state in protectedData.stateStream {
+                isLocked = state == .unavailable
+
+                if state == .available {
+                    credentials = try? loadCredentials()
+                } else {
+                    credentials = nil
+                }
+            }
+        }
+    }
+
+    private func loadCredentials() throws -> Credentials { /* ... */ }
+}`;
+---
+
+<DocsLayout title="Protected Data" section="examples">
+  <h1>Protected Data</h1>
+  <p class="text-lg text-muted-foreground mt-1 mb-8">Basic usage of <code>ProtectedDataObserver</code> for safely accessing encrypted data like Keychain and Core Data.</p>
+
+  <h2>Reading Current State</h2>
+  <p><code>ProtectedDataState</code> is an enum: <code>.available</code> (device unlocked) or <code>.unavailable</code> (device locked). Note that <code>ProtectedDataObserver</code> requires <code>@MainActor</code> for initialization because it reads <code>UIApplication.shared</code>.</p>
+  <CodeBlock code={readingState} title="Reading protected data state" />
+
+  <h2>Waiting in Background Tasks</h2>
+  <p><code>waitUntilAvailable()</code> suspends until the device is unlocked. Returns immediately if data is already available. Useful in background tasks that need Keychain access.</p>
+  <CodeBlock code={waitUntilAvailable} title="Background task with waitUntilAvailable" />
+
+  <h2>Practical Example</h2>
+  <p>A view that shows a locked screen when protected data is unavailable and loads credentials when the device is unlocked.</p>
+  <CodeBlock code={practicalExample} title="SecureContentView.swift" />
+
+  <PageNavigation
+    prevHref="examples/locale"
+    prevLabel="Locale"
+    nextHref="examples/notification-permission"
+    nextLabel="Notification Permission"
+  />
+</DocsLayout>

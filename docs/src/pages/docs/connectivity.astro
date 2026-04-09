@@ -1,0 +1,107 @@
+---
+import DocsLayout from "../../layouts/DocsLayout.astro";
+import CodeBlock from "../../components/CodeBlock.astro";
+import PageNavigation from "../../components/PageNavigation.astro";
+
+const statusModel = `public struct ConnectivityStatus: Sendable, Equatable {
+    /// Whether the device has network connectivity.
+    public let isConnected: Bool
+    /// The type of network interface currently in use.
+    public let interface: ConnectionInterface
+    /// True when using cellular data or a personal hotspot.
+    public let isExpensive: Bool
+    /// True when Low Data Mode is enabled.
+    public let isConstrained: Bool
+
+    /// A convenience default for the disconnected state.
+    public static let disconnected = ConnectivityStatus(
+        isConnected: false,
+        interface: .none,
+        isExpensive: false,
+        isConstrained: false
+    )
+}
+
+public enum ConnectionInterface: Sendable, Equatable {
+    case wifi
+    case cellular
+    case wiredEthernet
+    case other
+    case none
+}`;
+
+const protocol = `public protocol ConnectivityObserving: Sendable {
+    /// The current connectivity status.
+    var status: ConnectivityStatus { get }
+
+    /// An AsyncStream that emits connectivity changes.
+    var statusStream: AsyncStream<ConnectivityStatus> { get }
+}`;
+
+const usage = `let connectivity = ConnectivityObserver()
+
+// Check if online
+if connectivity.status.isConnected {
+    print("Online via \\(connectivity.status.interface)")
+}
+
+// Check connection type
+if connectivity.status.interface == .wifi {
+    startLargeDownload()
+}
+
+// Check if the connection is metered
+if connectivity.status.isExpensive {
+    useLowBandwidthMode()
+}
+
+// Check Low Data Mode
+if connectivity.status.isConstrained {
+    skipPrefetching()
+}`;
+
+const streamUsage = `// React to connectivity changes
+for await status in connectivity.statusStream {
+    if status.isConnected {
+        await resumeSync()
+    } else {
+        pauseSync()
+    }
+}
+
+// Conditionally start large operations
+for await status in connectivity.statusStream {
+    if status.interface == .wifi && !status.isConstrained {
+        await prefetchAssets()
+    }
+}`;
+---
+
+<DocsLayout title="Connectivity" section="docs">
+  <h1>ConnectivityObserver</h1>
+  <p class="text-lg text-muted-foreground mt-1 mb-8">Monitors network reachability and connection details using Apple's <code>NWPathMonitor</code>.</p>
+
+  <h2>Model</h2>
+  <p><code>ConnectivityStatus</code> is a struct that provides detailed information about the current network state, including connection type and data constraints.</p>
+  <CodeBlock code={statusModel} title="ConnectivityStatus & ConnectionInterface" />
+
+  <div class="not-prose my-4 rounded-lg border border-amber-500/20 bg-amber-500/5 p-4">
+    <p class="text-[13px] text-amber-200"><strong>Default value</strong> -- Use <code class="rounded bg-amber-500/10 px-1 py-0.5 text-[12px]">ConnectivityStatus.disconnected</code> as a safe default when initializing state before the first stream emission.</p>
+  </div>
+
+  <h2>Protocol</h2>
+  <CodeBlock code={protocol} title="ConnectivityObserving" />
+
+  <h2>Usage</h2>
+  <CodeBlock code={usage} title="Reading current state" />
+
+  <h2>Stream</h2>
+  <CodeBlock code={streamUsage} title="Reacting to changes" />
+
+  <PageNavigation
+    prevHref="docs/getting-started"
+    prevLabel="Getting Started"
+    nextHref="docs/app-lifecycle"
+    nextLabel="App Lifecycle"
+  />
+</DocsLayout>

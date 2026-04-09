@@ -1,0 +1,122 @@
+---
+import DocsLayout from "../../layouts/DocsLayout.astro";
+import CodeBlock from "../../components/CodeBlock.astro";
+import PageNavigation from "../../components/PageNavigation.astro";
+
+const readingState = `import ForgeObservers
+
+let notifications = NotificationPermissionObserver()
+
+// Current status (synchronous, thread-safe)
+let status = notifications.status
+// .notDetermined, .authorized, .denied, .provisional, .ephemeral
+
+// Convenience helpers
+notifications.isGranted           // true if authorized, provisional, or ephemeral
+notifications.isDenied            // true if explicitly denied
+notifications.canRequestPermission // true if .notDetermined`;
+
+const observingChanges = `// The stream emits the current value immediately on subscription,
+// then re-emits whenever the status changes (e.g. returning from Settings).
+Task {
+    for await status in notifications.statusStream {
+        print("Permission status: \\(status)")
+        print("Granted: \\(notifications.isGranted)")
+    }
+}
+
+// Force a re-check manually (e.g. after a deep link to Settings)
+await notifications.refresh()`;
+
+const reactingExample = `// Drive UI based on permission status changes
+func observeNotificationPermission() async {
+    for await status in notifications.statusStream {
+        if notifications.isGranted {
+            // Notifications are active — enable reminder features
+            enableTaskReminders()
+        } else if notifications.isDenied {
+            // User denied — show a contextual nudge, not a system prompt
+            // Direct them to Settings via ForgePush's PushPermission.openSettings()
+            showReminderFeatureUnavailableBanner()
+        }
+        // .notDetermined: permission not yet requested
+        // Use ForgePush's PushPermission to request authorization
+    }
+}`;
+
+const practicalExample = `import SwiftUI
+import ForgeObservers
+
+struct TaskFlowNotificationStatusView: View {
+    let notifications: NotificationPermissionObserving
+
+    @State private var isGranted = false
+    @State private var isDenied = false
+    @State private var canRequest = false
+
+    var body: some View {
+        VStack(spacing: 16) {
+            if isGranted {
+                Label("Reminders are active", systemImage: "checkmark.circle.fill")
+                    .foregroundStyle(.green)
+
+                Text("You'll receive task reminders and due-date alerts.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            } else if isDenied {
+                Label("Reminders are off", systemImage: "bell.slash")
+                    .foregroundStyle(.orange)
+
+                Text("Enable notifications in Settings to get task reminders.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+
+                // Use ForgePush's PushPermission to open Settings
+            } else if canRequest {
+                Text("Enable notifications to get task reminders.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+
+                // Use ForgePush's PushPermission.requestAuthorization() here
+            }
+        }
+        .padding()
+        .task {
+            // Stream emits current value immediately — no separate init read needed
+            for await _ in notifications.statusStream {
+                isGranted = notifications.isGranted
+                isDenied = notifications.isDenied
+                canRequest = notifications.canRequestPermission
+            }
+        }
+    }
+}`;
+---
+
+<DocsLayout title="Notification Permission" section="examples">
+  <h1>Notification Permission</h1>
+  <p class="text-lg text-muted-foreground mt-1 mb-8">Observing push notification permission status with <code>NotificationPermissionObserver</code>. For requesting authorization, use <code>PushPermission</code> from ForgePush.</p>
+
+  <h2>Reading Current Status</h2>
+  <p><code>NotificationPermissionStatus</code> has five cases: <code>.notDetermined</code>, <code>.authorized</code>, <code>.denied</code>, <code>.provisional</code>, and <code>.ephemeral</code>. The observer also provides convenience helpers.</p>
+  <CodeBlock code={readingState} title="Reading permission status" />
+
+  <h2>Observing Changes</h2>
+  <p>The stream emits the current value immediately on subscription, then re-emits whenever the status changes. Call <code>refresh()</code> to force a re-check at any point.</p>
+  <CodeBlock code={observingChanges} title="Observing with statusStream" />
+
+  <h2>Reacting to Status</h2>
+  <p>Use the stream to drive feature availability based on permission state. When the user returns from Settings, the observer re-checks automatically on the next foreground event.</p>
+  <CodeBlock code={reactingExample} title="Reacting to permission changes" />
+
+  <h2>Practical Example</h2>
+  <p>A status view that reflects the current permission state and updates automatically as the user changes it.</p>
+  <CodeBlock code={practicalExample} title="TaskFlowNotificationStatusView.swift" />
+
+  <PageNavigation
+    prevHref="examples/protected-data"
+    prevLabel="Protected Data"
+    nextHref="examples/viewmodel-integration"
+    nextLabel="ViewModel Integration"
+  />
+</DocsLayout>

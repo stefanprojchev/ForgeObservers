@@ -1,0 +1,189 @@
+---
+import DocsLayout from "../../layouts/DocsLayout.astro";
+import CodeBlock from "../../components/CodeBlock.astro";
+import PageNavigation from "../../components/PageNavigation.astro";
+
+const howStreamsWork = `// Every observer exposes a stream as a computed property.
+// Each access creates a new AsyncStream with its own subscription.
+public var statusStream: AsyncStream<ConnectivityStatus> {
+    AsyncStream { continuation in
+        // Set up system listener (NWPathMonitor, NotificationCenter, etc.)
+        // Call continuation.yield(value) on each change
+
+        continuation.onTermination = { _ in
+            // Clean up: remove observers, cancel monitors
+        }
+    }
+}`;
+
+const forAwaitExample = `// The most direct way to consume a stream
+for await status in connectivity.statusStream {
+    if status.isConnected {
+        await resumeSync()
+    } else {
+        pauseSync()
+    }
+}
+// This line is never reached while the stream is active.
+// It runs only after the stream finishes or the task is cancelled.`;
+
+const swiftuiTask = `struct ContentView: View {
+    let connectivity: ConnectivityObserving
+    let lifecycle: AppLifecycleObserving
+
+    @State private var isOffline = false
+    @State private var appState: AppLifecycleState = .active
+
+    var body: some View {
+        VStack {
+            if isOffline {
+                OfflineBanner()
+            }
+            MainContent()
+        }
+        .task {
+            // This task is cancelled when the view disappears.
+            // The stream's onTermination handler cleans up
+            // system observers automatically.
+            for await status in connectivity.statusStream {
+                isOffline = !status.isConnected
+            }
+        }
+        .task {
+            for await state in lifecycle.stateStream {
+                appState = state
+            }
+        }
+    }
+}`;
+
+const multipleStreams = `func startObserving() async {
+    // async let runs each stream concurrently.
+    // All three subscribe and process updates in parallel.
+    async let _: () = observeConnectivity()
+    async let _: () = observeLifecycle()
+    async let _: () = observeKeyboard()
+}
+
+private func observeConnectivity() async {
+    for await status in connectivity.statusStream {
+        isOffline = !status.isConnected
+    }
+}
+
+private func observeLifecycle() async {
+    for await state in lifecycle.stateStream {
+        if state == .active {
+            await refreshData()
+        }
+    }
+}
+
+private func observeKeyboard() async {
+    for await state in keyboard.stateStream {
+        keyboardHeight = state.height
+    }
+}`;
+
+const multipleStreamsCompact = `func startObserving() async {
+    async let _: () = connectivity.statusStream
+        .map { !$0.isConnected }
+        .assign(to: \\.isOffline, on: self)
+
+    async let _: () = lifecycle.stateStream
+        .map { $0 == .background }
+        .assign(to: \\.isInBackground, on: self)
+
+    async let _: () = keyboard.stateStream
+        .map { $0.height }
+        .assign(to: \\.keyboardHeight, on: self)
+}`;
+
+const cancellation = `// 1. SwiftUI automatic cancellation
+struct MyView: View {
+    var body: some View {
+        Text("Hello")
+            .task {
+                // Cancelled automatically when the view disappears.
+                for await status in connectivity.statusStream {
+                    // ...
+                }
+            }
+    }
+}
+
+// 2. Manual task cancellation
+let task = Task {
+    for await status in connectivity.statusStream {
+        // ...
+    }
+}
+
+// Later:
+task.cancel() // The stream terminates, cleanup runs
+
+// 3. Cooperative cancellation check
+for await status in connectivity.statusStream {
+    // The for-await loop checks Task.isCancelled between iterations.
+    // When cancelled, the loop exits and onTermination fires.
+}`;
+
+const currentVsStream = `let connectivity = ConnectivityObserver()
+
+// Synchronous read — returns the current value immediately.
+// Thread-safe, no suspension.
+let isOnline = connectivity.status.isConnected
+
+// Async stream — emits the current value immediately on subscription,
+// then delivers future changes as they occur.
+for await status in connectivity.statusStream {
+    // First emission is the current state, subsequent emissions are changes.
+    isOffline = !status.isConnected
+}`;
+---
+
+<DocsLayout title="Async Streams" section="docs">
+  <h1>Async Streams</h1>
+  <p class="text-lg text-muted-foreground mt-1 mb-8">How ForgeObservers uses AsyncStream for reactive system event delivery, and how to consume streams in your code.</p>
+
+  <h2>How Streams Work</h2>
+  <p>Every observer exposes one or more <code>AsyncStream</code> properties. Each access creates a fresh stream with its own system subscription. When the stream is terminated (via task cancellation or scope exit), the <code>onTermination</code> handler removes system observers and cleans up resources.</p>
+  <CodeBlock code={howStreamsWork} title="Internal pattern" />
+
+  <h3>Current Value vs. Stream</h3>
+  <p>All observers provide both a synchronous property for the current state and an async stream for changes. The synchronous property is thread-safe and returns immediately.</p>
+  <p>All streams emit the current value immediately on subscription, then subsequent changes. You don't need to read the synchronous property separately before subscribing — the first emission gives you the current state.</p>
+  <CodeBlock code={currentVsStream} title="Current value vs. stream" />
+
+  <h2>Iterating with <code>for await</code></h2>
+  <p>The <code>for await</code> loop is the primary way to consume an <code>AsyncStream</code>. The loop suspends between emissions and resumes each time a new value arrives. Code after the loop only runs when the stream finishes or the task is cancelled.</p>
+  <CodeBlock code={forAwaitExample} title="Basic iteration" />
+
+  <h2>Using with SwiftUI <code>.task</code></h2>
+  <p>SwiftUI's <code>.task</code> modifier is the ideal place to start stream subscriptions. The task starts when the view appears and is automatically cancelled when the view disappears, which triggers the stream's cleanup handler.</p>
+  <p>Use separate <code>.task</code> modifiers for independent streams. Each stream runs in its own cooperative task.</p>
+  <CodeBlock code={swiftuiTask} title="SwiftUI integration" />
+
+  <h2>Multiple Streams with <code>async let</code></h2>
+  <p>When you need to observe multiple streams concurrently in a single function (e.g., in a ViewModel), use <code>async let</code>. Each stream runs in a child task, and all are cancelled when the parent task is cancelled.</p>
+  <CodeBlock code={multipleStreams} title="Verbose approach" />
+
+  <p>With the <code>.assign(to:on:)</code> extension, this becomes much more concise:</p>
+  <CodeBlock code={multipleStreamsCompact} title="Compact approach with .assign" />
+
+  <h2>Cancellation</h2>
+  <p>AsyncStream respects Swift's cooperative cancellation model. When a task is cancelled, the <code>for await</code> loop exits and the stream's <code>onTermination</code> handler runs, removing system observers and freeing resources.</p>
+  <p>There are three common cancellation patterns:</p>
+  <CodeBlock code={cancellation} title="Cancellation patterns" />
+
+  <div class="not-prose my-6 rounded-lg border border-amber-500/20 bg-amber-500/5 p-4">
+    <p class="text-[13px] text-amber-200"><strong>Memory safety</strong> -- All observer streams use <code class="rounded bg-amber-500/10 px-1 py-0.5 text-[12px]">[weak self]</code> in their closures and clean up system observers in <code class="rounded bg-amber-500/10 px-1 py-0.5 text-[12px]">onTermination</code>. As long as you cancel the consuming task (which SwiftUI's <code class="rounded bg-amber-500/10 px-1 py-0.5 text-[12px]">.task</code> does automatically), there are no retain cycles or leaked subscriptions.</p>
+  </div>
+
+  <PageNavigation
+    prevHref="docs/notification-permission"
+    prevLabel="Notification Permission"
+    nextHref="docs/assign-extension"
+    nextLabel="Assign Extension"
+  />
+</DocsLayout>

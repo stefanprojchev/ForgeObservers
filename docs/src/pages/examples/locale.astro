@@ -1,0 +1,83 @@
+---
+import DocsLayout from "../../layouts/DocsLayout.astro";
+import CodeBlock from "../../components/CodeBlock.astro";
+import PageNavigation from "../../components/PageNavigation.astro";
+
+const readingState = `import ForgeObservers
+
+let locale = LocaleObserver()
+
+// Current snapshot
+let current = locale.current
+
+print(current.languageCode)  // "en", "mk", "de", etc.
+print(current.regionCode)    // "US", "MK", nil, etc.
+
+// Check text direction
+let isRTL = Locale.characterDirection(
+    forLanguage: current.languageCode
+) == .rightToLeft`;
+
+const subscribing = `for await locale in observer.localeStream {
+    // Recreate formatters with the new locale
+    let identifier = locale.regionCode.map {
+        "\\(locale.languageCode)_\\($0)"
+    } ?? locale.languageCode
+
+    dateFormatter.locale = Locale(identifier: identifier)
+    numberFormatter.locale = Locale(identifier: identifier)
+}`;
+
+const practicalExample = `import SwiftUI
+import ForgeObservers
+
+struct PriceLabel: View {
+    let locale: LocaleObserving
+    let amount: Decimal
+
+    @State private var formattedPrice = ""
+
+    var body: some View {
+        Text(formattedPrice)
+            .task {
+                for await appLocale in locale.localeStream {
+                    let identifier = appLocale.regionCode.map {
+                        "\\(appLocale.languageCode)_\\($0)"
+                    } ?? appLocale.languageCode
+
+                    let formatter = NumberFormatter()
+                    formatter.numberStyle = .currency
+                    formatter.locale = Locale(identifier: identifier)
+
+                    formattedPrice = formatter.string(
+                        from: amount as NSDecimalNumber
+                    ) ?? ""
+                }
+            }
+    }
+}`;
+---
+
+<DocsLayout title="Locale" section="examples">
+  <h1>Locale</h1>
+  <p class="text-lg text-muted-foreground mt-1 mb-8">Basic usage of <code>LocaleObserver</code> for reacting to language and region changes.</p>
+
+  <h2>Reading Current State</h2>
+  <p><code>AppLocale</code> is a struct with <code>languageCode</code> (BCP 47, e.g. "en") and an optional <code>regionCode</code> (e.g. "US"). Read <code>current</code> for a thread-safe snapshot.</p>
+  <CodeBlock code={readingState} title="Reading locale" />
+
+  <h2>Subscribing to Changes</h2>
+  <p>Use <code>localeStream</code> to rebuild date and number formatters when the user changes their device language or region in Settings.</p>
+  <CodeBlock code={subscribing} title="Subscribing to localeStream" />
+
+  <h2>Practical Example</h2>
+  <p>A price label that automatically reformats when the device locale changes.</p>
+  <CodeBlock code={practicalExample} title="PriceLabel.swift" />
+
+  <PageNavigation
+    prevHref="examples/appearance"
+    prevLabel="Appearance"
+    nextHref="examples/protected-data"
+    nextLabel="Protected Data"
+  />
+</DocsLayout>

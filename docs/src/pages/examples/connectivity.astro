@@ -1,0 +1,94 @@
+---
+import DocsLayout from "../../layouts/DocsLayout.astro";
+import CodeBlock from "../../components/CodeBlock.astro";
+import PageNavigation from "../../components/PageNavigation.astro";
+
+const readingState = `import ForgeObservers
+
+let connectivity = ConnectivityObserver()
+
+// Current snapshot — always thread-safe
+let status = connectivity.status
+
+if status.isConnected {
+    print("Online via \\(status.interface)")  // .wifi, .cellular, etc.
+}
+
+if status.isExpensive {
+    // On cellular or personal hotspot — skip large downloads
+}
+
+if status.isConstrained {
+    // Low Data Mode — reduce image quality
+}`;
+
+const subscribing = `for await status in connectivity.statusStream {
+    if !status.isConnected {
+        showOfflineBanner()
+    } else {
+        hideOfflineBanner()
+    }
+}`;
+
+const practicalExample = `import SwiftUI
+import ForgeObservers
+
+struct DownloadView: View {
+    let connectivity: ConnectivityObserving
+
+    @State private var isOffline = false
+    @State private var isOnWifi = false
+
+    var body: some View {
+        VStack(spacing: 16) {
+            if isOffline {
+                Label("No connection", systemImage: "wifi.slash")
+                    .foregroundStyle(.red)
+            }
+
+            Button("Download HD Video") {
+                startDownload()
+            }
+            .disabled(isOffline || !isOnWifi)
+
+            if !isOnWifi && !isOffline {
+                Text("Connect to Wi-Fi to download")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .task {
+            for await status in connectivity.statusStream {
+                isOffline = !status.isConnected
+                isOnWifi = status.interface == .wifi
+            }
+        }
+    }
+
+    private func startDownload() { /* ... */ }
+}`;
+---
+
+<DocsLayout title="Connectivity" section="examples">
+  <h1>Connectivity</h1>
+  <p class="text-lg text-muted-foreground mt-1 mb-8">Basic usage of <code>ConnectivityObserver</code> for monitoring network reachability and connection type.</p>
+
+  <h2>Reading Current State</h2>
+  <p><code>ConnectivityStatus</code> is a struct with four properties: <code>isConnected</code>, <code>interface</code>, <code>isExpensive</code>, and <code>isConstrained</code>. Read <code>status</code> at any time for a thread-safe snapshot.</p>
+  <CodeBlock code={readingState} title="Reading connectivity" />
+
+  <h2>Subscribing to Changes</h2>
+  <p><code>statusStream</code> emits the current value on subscription, then every subsequent change. The stream lives until the task is cancelled.</p>
+  <CodeBlock code={subscribing} title="Subscribing to statusStream" />
+
+  <h2>Practical Example</h2>
+  <p>A download view that gates HD downloads on Wi-Fi and shows an offline banner when disconnected.</p>
+  <CodeBlock code={practicalExample} title="DownloadView.swift" />
+
+  <PageNavigation
+    prevHref="docs/assign-extension"
+    prevLabel="Assign Extension"
+    nextHref="examples/app-lifecycle"
+    nextLabel="App Lifecycle"
+  />
+</DocsLayout>

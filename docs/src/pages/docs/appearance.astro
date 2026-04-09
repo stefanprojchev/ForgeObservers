@@ -1,0 +1,59 @@
+---
+import DocsLayout from "../../layouts/DocsLayout.astro";
+import CodeBlock from "../../components/CodeBlock.astro";
+import PageNavigation from "../../components/PageNavigation.astro";
+
+const model = `public enum AppAppearance: Sendable {
+    case light
+    case dark
+}`;
+
+const protocol = `public protocol AppearanceObserving: Sendable {
+    /// The current system appearance.
+    var current: AppAppearance { get }
+
+    /// An AsyncStream that emits appearance changes.
+    /// Emits the current value on subscription.
+    var appearanceStream: AsyncStream<AppAppearance> { get }
+}`;
+
+const usage = `let appearance = AppearanceObserver()
+
+// Read current appearance
+let iconSet = appearance.current == .dark ? "icons-dark" : "icons-light"
+
+// React to appearance changes
+for await mode in appearance.appearanceStream {
+    themeEngine.apply(mode == .dark ? .dark : .light)
+}`;
+---
+
+<DocsLayout title="Appearance" section="docs">
+  <h1>AppearanceObserver</h1>
+  <p class="text-lg text-muted-foreground mt-1 mb-8">Observes system appearance changes (light/dark mode) via trait collection updates.</p>
+
+  <h2>Model</h2>
+  <CodeBlock code={model} title="AppAppearance" />
+
+  <h2>Protocol</h2>
+  <p>The <code>appearanceStream</code> emits the current value immediately on subscription, unlike most other observers.</p>
+  <CodeBlock code={protocol} title="AppearanceObserving" />
+
+  <h2>Usage</h2>
+  <CodeBlock code={usage} title="Appearance-aware theming" />
+
+  <div class="not-prose my-4 rounded-lg border border-amber-500/20 bg-amber-500/5 p-4">
+    <p class="text-[13px] text-amber-200"><strong>@MainActor init</strong> -- The initializer is <code class="rounded bg-amber-500/10 px-1 py-0.5 text-[12px]">@MainActor</code> because it reads UIKit trait collections. Create this observer at app startup or from any <code class="rounded bg-amber-500/10 px-1 py-0.5 text-[12px]">@MainActor</code> context.</p>
+  </div>
+
+  <div class="not-prose my-4 rounded-lg border border-amber-500/20 bg-amber-500/5 p-4">
+    <p class="text-[13px] text-amber-200"><strong>SwiftUI note</strong> -- SwiftUI views automatically respond to <code class="rounded bg-amber-500/10 px-1 py-0.5 text-[12px]">@Environment(\.colorScheme)</code>. This observer is for ViewModels, services, or any non-View code that needs to react to appearance changes.</p>
+  </div>
+
+  <PageNavigation
+    prevHref="docs/keyboard"
+    prevLabel="Keyboard"
+    nextHref="docs/locale"
+    nextLabel="Locale"
+  />
+</DocsLayout>

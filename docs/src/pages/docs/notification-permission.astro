@@ -1,0 +1,144 @@
+---
+import DocsLayout from "../../layouts/DocsLayout.astro";
+import CodeBlock from "../../components/CodeBlock.astro";
+import PageNavigation from "../../components/PageNavigation.astro";
+
+const statusEnum = `public enum NotificationPermissionStatus: Sendable {
+    case notDetermined
+    case denied
+    case authorized
+    case provisional
+    case ephemeral
+}`;
+
+const observingProtocol = `public protocol NotificationPermissionObserving: Sendable {
+    /// The current permission status (synchronous read)
+    var status: NotificationPermissionStatus { get }
+
+    /// Stream of permission status changes. Emits the current value immediately
+    /// on subscription, then re-checks on every app foreground event since iOS
+    /// provides no callback when the user changes permission in Settings.
+    var statusStream: AsyncStream<NotificationPermissionStatus> { get }
+
+    /// Forces a fresh check against UNUserNotificationCenter.
+    /// Called automatically on app foreground.
+    func refresh() async
+}`;
+
+const helperExtensions = `// Convenience extensions on NotificationPermissionObserving
+extension NotificationPermissionObserving {
+    /// true when status is .authorized, .provisional, or .ephemeral
+    var isGranted: Bool { get }
+
+    /// true when status is .denied
+    var isDenied: Bool { get }
+
+    /// true when status is .notDetermined
+    var canRequestPermission: Bool { get }
+}
+
+// Note: For requesting permission, use PushPermission from ForgePush.`;
+
+const basicUsage = `import ForgeObservers
+
+let notifications = NotificationPermissionObserver()
+
+// Check current status
+print("Status: \\(notifications.status)")
+print("Granted: \\(notifications.isGranted)")
+print("Can request: \\(notifications.canRequestPermission)")
+
+// Subscribe to changes
+Task {
+    for await status in notifications.statusStream {
+        print("Permission status: \\(status)")
+    }
+}`;
+
+const reactingToChanges = `// React to permission changes as they happen.
+// The stream emits the current value immediately on subscription,
+// then re-emits whenever the status changes (e.g. after returning from Settings).
+func observePermissionChanges() async {
+    let notifications: NotificationPermissionObserving = // resolve from DI
+
+    for await status in notifications.statusStream {
+        switch status {
+        case .authorized, .provisional, .ephemeral:
+            enableNotificationFeatures()
+        case .denied:
+            showPermissionDeniedBanner()
+        case .notDetermined:
+            break // Permission not yet requested — use ForgePush's PushPermission to request
+        }
+    }
+}`;
+
+const viewModelUsage = `@Observable
+final class TaskFlowSettingsViewModel {
+    private let notifications: NotificationPermissionObserving
+
+    var isGranted = false
+    var isDenied = false
+    var canRequest = false
+
+    init(notifications: NotificationPermissionObserving) {
+        self.notifications = notifications
+        // Sync initial state synchronously before stream starts
+        isGranted = notifications.isGranted
+        isDenied = notifications.isDenied
+        canRequest = notifications.canRequestPermission
+    }
+
+    func startObserving() async {
+        for await status in notifications.statusStream {
+            isGranted = notifications.isGranted
+            isDenied = notifications.isDenied
+            canRequest = notifications.canRequestPermission
+        }
+    }
+
+    /// Force a re-check (e.g. after returning from a deep link to Settings).
+    func refresh() async {
+        await notifications.refresh()
+    }
+}`;
+---
+
+<DocsLayout title="Notification Permission" section="docs">
+  <h1>NotificationPermissionObserver</h1>
+  <p class="text-lg text-muted-foreground mt-1 mb-8">Tracks push notification permission status. Re-checks on every app foreground event and streams changes in real time.</p>
+
+  <h2>NotificationPermissionStatus</h2>
+  <p>An enum representing all possible push notification authorization states.</p>
+  <CodeBlock code={statusEnum} title="NotificationPermissionStatus.swift" />
+
+  <h2>NotificationPermissionObserving Protocol</h2>
+  <p>The protocol provides the current status and a stream. Since iOS provides no system callback when the user changes notification permission in Settings, the observer re-checks the status on every app foreground event.</p>
+  <CodeBlock code={observingProtocol} title="NotificationPermissionObserving.swift" />
+
+  <h2>Helper Extensions</h2>
+  <p>The protocol includes convenience computed properties for the most common permission states.</p>
+  <CodeBlock code={helperExtensions} title="NotificationPermissionObserving+Helpers.swift" />
+
+  <div class="not-prose my-6 rounded-lg border border-blue-500/20 bg-blue-500/5 p-4">
+    <p class="text-[13px] text-blue-200"><strong>Note</strong> — For requesting permission, use <code class="rounded bg-blue-500/10 px-1 py-0.5 text-[12px]">PushPermission</code> from <strong>ForgePush</strong>. <code class="rounded bg-blue-500/10 px-1 py-0.5 text-[12px]">NotificationPermissionObserver</code> is observation-only.</p>
+  </div>
+
+  <h2>Usage</h2>
+  <CodeBlock code={basicUsage} title="NotificationPermission.swift" />
+
+  <h2>Reacting to Changes</h2>
+  <p>The stream emits the current value immediately on subscription, then re-emits each time the status changes. Use this to drive UI that reflects the current permission state without polling.</p>
+  <CodeBlock code={reactingToChanges} title="ObservingChanges.swift" />
+
+  <h2>ViewModel Example</h2>
+  <p>Bind notification permission state to a ViewModel for use in settings screens.</p>
+  <CodeBlock code={viewModelUsage} title="TaskFlowSettingsViewModel.swift" />
+
+  <PageNavigation
+    prevHref="docs/protected-data"
+    prevLabel="Protected Data"
+    nextHref="docs/async-streams"
+    nextLabel="Async Streams"
+  />
+</DocsLayout>

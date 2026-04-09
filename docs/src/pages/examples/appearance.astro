@@ -1,0 +1,75 @@
+---
+import DocsLayout from "../../layouts/DocsLayout.astro";
+import CodeBlock from "../../components/CodeBlock.astro";
+import PageNavigation from "../../components/PageNavigation.astro";
+
+const readingState = `import ForgeObservers
+
+// @MainActor required for initialization
+@MainActor
+func setup() {
+    let appearance = AppearanceObserver()
+
+    // Current appearance — .light or .dark
+    let current = appearance.current
+
+    if current == .dark {
+        applyDarkThemeResources()
+    }
+}`;
+
+const subscribing = `for await appearance in observer.appearanceStream {
+    switch appearance {
+    case .light:
+        mapView.setStyle(.outdoors)
+        chartRenderer.colors = .lightPalette
+    case .dark:
+        mapView.setStyle(.dark)
+        chartRenderer.colors = .darkPalette
+    }
+}`;
+
+const practicalExample = `import SwiftUI
+import ForgeObservers
+
+struct MapContainerView: View {
+    let appearance: AppearanceObserving
+
+    @State private var mapStyle: MapStyle = .outdoors
+
+    var body: some View {
+        MapView(style: mapStyle)
+            .task {
+                for await mode in appearance.appearanceStream {
+                    mapStyle = mode == .dark ? .dark : .outdoors
+                }
+            }
+    }
+}`;
+---
+
+<DocsLayout title="Appearance" section="examples">
+  <h1>Appearance</h1>
+  <p class="text-lg text-muted-foreground mt-1 mb-8">Basic usage of <code>AppearanceObserver</code> for reacting to light/dark mode changes.</p>
+
+  <h2>Reading Current State</h2>
+  <p><code>AppAppearance</code> is an enum with two cases: <code>.light</code> and <code>.dark</code>. Note that <code>AppearanceObserver</code> requires <code>@MainActor</code> for initialization because it reads <code>UITraitCollection.current</code>.</p>
+  <CodeBlock code={readingState} title="Reading appearance" />
+
+  <h2>Subscribing to Changes</h2>
+  <p>Use <code>appearanceStream</code> to update non-SwiftUI components like map views, chart renderers, or WebKit themes that need manual dark mode handling.</p>
+  <CodeBlock code={subscribing} title="Subscribing to appearanceStream" />
+
+  <h2>Practical Example</h2>
+  <p>A map container that switches between light and dark map styles when the system appearance changes.</p>
+  <CodeBlock code={practicalExample} title="MapContainerView.swift" />
+
+  <p class="text-sm text-muted-foreground mt-6"><strong>Note:</strong> SwiftUI views can use <code>@Environment(\.colorScheme)</code> for appearance-based rendering. Use <code>AppearanceObserver</code> when you need to update UIKit components, third-party SDKs, or ViewModels that drive non-SwiftUI rendering.</p>
+
+  <PageNavigation
+    prevHref="examples/keyboard"
+    prevLabel="Keyboard"
+    nextHref="examples/locale"
+    nextLabel="Locale"
+  />
+</DocsLayout>
