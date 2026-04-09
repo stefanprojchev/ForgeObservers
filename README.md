@@ -1,149 +1,170 @@
 # ForgeObservers
 
-Reactive system observers for iOS, built with Swift.
+Reactive system observers for iOS — connectivity, lifecycle, keyboard, and more.
+
+![Swift 6.3+](https://img.shields.io/badge/Swift-6.3+-orange.svg)
+![iOS 18+](https://img.shields.io/badge/iOS-18+-blue.svg)
+![License](https://img.shields.io/badge/license-MIT-lightgrey.svg)
+[![Release](https://img.shields.io/github/v/release/stefanprojchev/ForgeObservers)](https://github.com/stefanprojchev/ForgeObservers/releases)
+
+📖 **[Full documentation →](https://stefanprojchev.github.io/ForgeObservers/)**
+
+---
+
+ForgeObservers exposes the most common iOS system events as `AsyncStream` values behind clean protocols. Every observer is testable via an injectable `NotificationCenter` — no `UIApplication.shared` required, no `@testable import` tricks.
+
+## Observers
+
+| Observer | Protocol | Emits |
+|---|---|---|
+| **ConnectivityObserver** | `ConnectivityObserving` | `ConnectivityStatus` — network path, interface, expensive/constrained flags |
+| **AppLifecycleObserver** | `AppLifecycleObserving` | `AppLifecycleState` — `.active`, `.inactive`, `.background` |
+| **KeyboardObserver** | `KeyboardObserving` | `KeyboardState` — visibility, height, animation duration |
+| **AppearanceObserver** | `AppearanceObserving` | `AppAppearance` — light/dark mode |
+| **LocaleObserver** | `LocaleObserving` | `AppLocale` — language + region code |
+| **ProtectedDataObserver** | `ProtectedDataObserving` | `ProtectedDataState` — available/unavailable, with `waitUntilAvailable()` |
+| **NotificationPermissionObserver** | `NotificationPermissionObserving` | `NotificationPermissionStatus` |
+
+## Features
+
+- **AsyncStream-first** — subscribe with `for await` in a `.task` modifier or inside an actor
+- **Protocol-oriented** — each observer has a protocol, making mocking trivial
+- **Testable by design** — notification-based observers accept an injectable `NotificationCenter` so tests can pump fake notifications
+- **`.assign(to:on:)` helper** — bind any `AsyncSequence` directly to a property on an object
+- **Zero Combine dependency** — pure Swift Concurrency
 
 ## Requirements
 
-- iOS 16+
-- Swift 6.0+
+- **iOS** 18+
+- **Swift** 6.3+ (Xcode 26 or later)
 
 ## Installation
 
-### Swift Package Manager
+### Xcode
 
-Add ForgeObservers to your project via Xcode:
+1. **File → Add Package Dependencies…**
+2. Paste `https://github.com/stefanprojchev/ForgeObservers.git`
+3. Set rule to **Up to Next Major** from `1.0.0`
 
-1. **File > Add Package Dependencies...**
-2. Enter the repository URL
-3. Select the version rule and add to your target
-
-Or add it directly to your `Package.swift`:
+### Package.swift
 
 ```swift
 dependencies: [
     .package(url: "https://github.com/stefanprojchev/ForgeObservers.git", from: "1.0.0")
+],
+targets: [
+    .target(
+        name: "YourApp",
+        dependencies: ["ForgeObservers"]
+    )
 ]
 ```
 
 ## Quick Start
+
+### Connectivity
 
 ```swift
 import ForgeObservers
 
 let connectivity = ConnectivityObserver()
 
-// Read current status
+// Sync read of the current status
 if connectivity.status.isConnected {
-    print("Online via \(connectivity.status.interface)")
-}
-
-// Check network conditions
-if connectivity.status.isConstrained {
-    print("Low Data Mode — reduce media quality")
+    await fetchLatestData()
 }
 
 // Subscribe to changes
 Task {
     for await status in connectivity.statusStream {
-        if status.isConnected {
-            print("Connected via \(status.interface)")
-        } else {
-            print("Connection lost")
-        }
+        print("Connected: \(status.isConnected), via: \(status.interface)")
     }
 }
 ```
 
-## All Observers
-
-| Observer | Model | Protocol | Description |
-|----------|-------|----------|-------------|
-| `ConnectivityObserver` | `ConnectivityStatus` | `ConnectivityObserving` | Network reachability, interface type, Low Data Mode |
-| `AppLifecycleObserver` | `AppLifecycleState` | `AppLifecycleObserving` | App lifecycle transitions (active, inactive, background) |
-| `KeyboardObserver` | `KeyboardState` | `KeyboardObserving` | Keyboard visibility and frame changes |
-| `AppearanceObserver` | `AppAppearance` | `AppearanceObserving` | System appearance (light/dark mode) |
-| `LocaleObserver` | `AppLocale` | `LocaleObserving` | Locale changes (language, region) |
-| `ProtectedDataObserver` | `ProtectedDataState` | `ProtectedDataObserving` | Protected data availability (Keychain, encrypted files) |
-| `NotificationPermissionObserver` | `NotificationPermissionStatus` | `NotificationPermissionObserving` | Push notification permission status |
-
-## ConnectivityStatus
-
-The connectivity observer provides rich network information:
+### App Lifecycle in SwiftUI
 
 ```swift
-let status = connectivity.status
+import SwiftUI
+import ForgeObservers
 
-status.isConnected   // true if a network path is available
-status.interface     // .wifi, .cellular, .wiredEthernet, .other, .none
-status.isExpensive   // true on cellular or personal hotspot
-status.isConstrained // true when Low Data Mode is enabled
-```
+struct ContentView: View {
+    let lifecycle: AppLifecycleObserving
 
-## AsyncStream Usage
-
-Every observer exposes an `AsyncStream` for reactive updates:
-
-```swift
-for await state in lifecycle.stateStream {
-    switch state {
-    case .active:
-        await refreshData()
-    case .inactive:
-        pauseTimers()
-    case .background:
-        saveState()
+    var body: some View {
+        FeedView()
+            .task {
+                for await state in lifecycle.stateStream {
+                    switch state {
+                    case .active:     resumeTimers()
+                    case .background: await saveState()
+                    case .inactive:   break
+                    }
+                }
+            }
     }
 }
 ```
 
-All streams emit the current value on subscription. Cancellation is automatic with SwiftUI's `.task` modifier.
+### Testing with injected NotificationCenter
 
-## Assign Extension
+```swift
+import Testing
+import UIKit
+@testable import ForgeObservers
 
-Combine-like `.assign(to:on:)` for binding stream values to properties:
+@Test
+func lifecycleReactsToBackground() async throws {
+    // Inject a fresh NotificationCenter — no interference from the real one
+    let center = NotificationCenter()
+    let observer = AppLifecycleObserver(notificationCenter: center)
+
+    center.post(name: UIApplication.didEnterBackgroundNotification, object: nil)
+    try await Task.sleep(for: .milliseconds(50))
+
+    #expect(observer.state == .background)
+}
+```
+
+## AsyncSequence helpers
+
+Bind any stream directly to a property:
 
 ```swift
 @Observable
-final class MyViewModel {
-    private let connectivity: ConnectivityObserving
-    private let keyboard: KeyboardObserving
-
+final class AppViewModel {
     var isOffline = false
-    var keyboardHeight: CGFloat = 0
 
-    func startObserving() async {
-        async let _: () = connectivity.statusStream
+    func start(connectivity: ConnectivityObserving) async {
+        await connectivity.statusStream
             .map { !$0.isConnected }
             .assign(to: \.isOffline, on: self)
-
-        async let _: () = keyboard.stateStream
-            .map { $0.height }
-            .assign(to: \.keyboardHeight, on: self)
     }
 }
 ```
 
-## Thread Safety
+## Documentation
 
-All observers are `Sendable` and thread-safe. State is protected with `OSAllocatedUnfairLock`. Read `status`, `state`, or `current` from any context.
+- **[Getting Started](https://stefanprojchev.github.io/ForgeObservers/docs/getting-started/)**
+- **[Connectivity](https://stefanprojchev.github.io/ForgeObservers/docs/connectivity/)** · **[App Lifecycle](https://stefanprojchev.github.io/ForgeObservers/docs/app-lifecycle/)** · **[Keyboard](https://stefanprojchev.github.io/ForgeObservers/docs/keyboard/)**
+- **[Appearance](https://stefanprojchev.github.io/ForgeObservers/docs/appearance/)** · **[Locale](https://stefanprojchev.github.io/ForgeObservers/docs/locale/)** · **[Protected Data](https://stefanprojchev.github.io/ForgeObservers/docs/protected-data/)** · **[Notification Permission](https://stefanprojchev.github.io/ForgeObservers/docs/notification-permission/)**
+- **[Async Streams](https://stefanprojchev.github.io/ForgeObservers/docs/async-streams/)**
 
-`AppearanceObserver` and `ProtectedDataObserver` require `@MainActor` for initialization because they read UIKit state. Once created, all properties are nonisolated.
+## The Forge Family
 
-## Forge Ecosystem
-
-ForgeObservers is part of the **Forge** family of Swift packages for iOS:
+ForgeObservers is part of the **Forge** family of Swift packages for iOS.
 
 | Package | Description |
-|---------|-------------|
-| [ForgeCore](https://github.com/stefanprojchev/ForgeCore) | Thread-safe utilities — `LockedState` and `SendableFileManager` |
-| [ForgeInject](https://github.com/stefanprojchev/ForgeInject) | Lightweight dependency injection with property wrapper |
-| **ForgeObservers** | Reactive system observers (connectivity, lifecycle, keyboard, and more) |
-| [ForgeStorage](https://github.com/stefanprojchev/ForgeStorage) | Type-safe persistence — key-value, file storage, and Keychain |
-| [ForgeBackgroundTasks](https://github.com/stefanprojchev/ForgeBackgroundTasks) | BGTaskScheduler registration, scheduling, and dispatch |
-| [ForgeLocation](https://github.com/stefanprojchev/ForgeLocation) | Location-based triggers — geofencing, significant changes, visits |
-| [ForgePush](https://github.com/stefanprojchev/ForgePush) | Push notification management — permissions, tokens, silent and visible routing |
-| [ForgeOrchestrator](https://github.com/stefanprojchev/ForgeOrchestrator) | Sequence, pipeline, and monitor orchestrators for iOS app flows |
+|---|---|
+| [ForgeCore](https://github.com/stefanprojchev/ForgeCore) | Thread-safe primitives for iOS Swift packages. |
+| [ForgeInject](https://github.com/stefanprojchev/ForgeInject) | Dependency injection with constructor and property wrapper support. |
+| **ForgeObservers** | Reactive system observers — connectivity, lifecycle, keyboard, and more. |
+| [ForgeStorage](https://github.com/stefanprojchev/ForgeStorage) | Type-safe key-value, file, and Keychain storage. |
+| [ForgeOrchestrator](https://github.com/stefanprojchev/ForgeOrchestrator) | Orchestrate app flows — startup gates, data pipelines, and continuous monitors. |
+| [ForgePush](https://github.com/stefanprojchev/ForgePush) | Push notification management — permissions, tokens, and routing. |
+| [ForgeLocation](https://github.com/stefanprojchev/ForgeLocation) | Location triggers — geofencing, significant changes, and visits. |
+| [ForgeBackgroundTasks](https://github.com/stefanprojchev/ForgeBackgroundTasks) | Background task scheduling and dispatch. |
 
 ## License
 
-MIT License. See [LICENSE](LICENSE) for details.
+ForgeObservers is released under the MIT License. See [LICENSE](LICENSE).
