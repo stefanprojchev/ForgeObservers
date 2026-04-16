@@ -7,8 +7,6 @@ Reactive system observers for iOS — connectivity, lifecycle, keyboard, and mor
 ![License](https://img.shields.io/badge/license-MIT-lightgrey.svg)
 [![Release](https://img.shields.io/github/v/release/stefanprojchev/ForgeObservers)](https://github.com/stefanprojchev/ForgeObservers/releases)
 
-📖 **[Full documentation →](https://stefanprojchev.github.io/ForgeObservers/)**
-
 ---
 
 ForgeObservers exposes the most common iOS system events as `AsyncStream` values behind clean protocols. Every observer is testable via an injectable `NotificationCenter` — no `UIApplication.shared` required, no `@testable import` tricks.
@@ -142,13 +140,6 @@ final class AppViewModel {
     }
 }
 ```
-
-## Documentation
-
-- **[Getting Started](https://stefanprojchev.github.io/ForgeObservers/docs/getting-started/)**
-- **[Connectivity](https://stefanprojchev.github.io/ForgeObservers/docs/connectivity/)** · **[App Lifecycle](https://stefanprojchev.github.io/ForgeObservers/docs/app-lifecycle/)** · **[Keyboard](https://stefanprojchev.github.io/ForgeObservers/docs/keyboard/)**
-- **[Appearance](https://stefanprojchev.github.io/ForgeObservers/docs/appearance/)** · **[Locale](https://stefanprojchev.github.io/ForgeObservers/docs/locale/)** · **[Protected Data](https://stefanprojchev.github.io/ForgeObservers/docs/protected-data/)** · **[Notification Permission](https://stefanprojchev.github.io/ForgeObservers/docs/notification-permission/)**
-- **[Async Streams](https://stefanprojchev.github.io/ForgeObservers/docs/async-streams/)**
 
 ## The Forge Family
 
