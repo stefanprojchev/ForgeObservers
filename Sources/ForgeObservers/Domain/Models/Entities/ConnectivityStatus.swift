@@ -1,14 +1,5 @@
 import Network
 
-/// The active network interface type.
-public enum ConnectionInterface: Sendable, Equatable {
-    case wifi
-    case cellular
-    case wiredEthernet
-    case other
-    case none
-}
-
 /// A snapshot of the device's current network connectivity.
 public struct ConnectivityStatus: Sendable, Equatable {
     /// Whether the device has a usable network path.
@@ -43,8 +34,6 @@ public struct ConnectivityStatus: Sendable, Equatable {
         isConstrained: false
     )
 }
-
-// MARK: - Internal
 
 extension ConnectivityStatus {
     init(from path: NWPath) {

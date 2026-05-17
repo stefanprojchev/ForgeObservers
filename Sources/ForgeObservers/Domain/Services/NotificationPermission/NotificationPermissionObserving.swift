@@ -12,8 +12,6 @@ public protocol NotificationPermissionObserving: Sendable {
     func refresh() async
 }
 
-// MARK: - Helpers
-
 public extension NotificationPermissionObserving {
     /// Whether the user has granted some form of permission (full, provisional, or ephemeral).
     var isGranted: Bool {

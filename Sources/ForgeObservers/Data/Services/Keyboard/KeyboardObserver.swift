@@ -3,6 +3,9 @@ import UIKit
 
 /// Monitors keyboard visibility and frame via `UIResponder` notifications.
 public final class KeyboardObserver: KeyboardObserving, Sendable {
+
+    // MARK: - Dependencies
+
     private struct LockedState: Sendable {
         var state: KeyboardState = .hidden
         var continuations: [UUID: AsyncStream<KeyboardState>.Continuation] = [:]
@@ -12,7 +15,7 @@ public final class KeyboardObserver: KeyboardObserving, Sendable {
     nonisolated(unsafe) private var tokens: [any NSObjectProtocol] = []
     private let notificationCenter: NotificationCenter
 
-    // MARK: - Initialization
+    // MARK: - Init
 
     /// Creates the observer and begins monitoring keyboard visibility changes.
     /// - Parameter notificationCenter: The notification center to subscribe to. Defaults to `.default`.
@@ -56,13 +59,11 @@ public final class KeyboardObserver: KeyboardObserving, Sendable {
         }
     }
 
-    // MARK: - Properties
+    // MARK: - Implementation
 
     public var state: KeyboardState {
         lock.withLock { $0.state }
     }
-
-    // MARK: - Stream
 
     public var stateStream: AsyncStream<KeyboardState> {
         let id = UUID()

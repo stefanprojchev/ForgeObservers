@@ -5,6 +5,9 @@ import UIKit
 ///
 /// Requires `@MainActor` for initialization.
 public final class ProtectedDataObserver: ProtectedDataObserving, Sendable {
+
+    // MARK: - Dependencies
+
     private struct LockedState: Sendable {
         var state: ProtectedDataState
         var continuations: [UUID: AsyncStream<ProtectedDataState>.Continuation] = [:]
@@ -14,7 +17,7 @@ public final class ProtectedDataObserver: ProtectedDataObserving, Sendable {
     nonisolated(unsafe) private var tokens: [any NSObjectProtocol] = []
     private let notificationCenter: NotificationCenter
 
-    // MARK: - Initialization
+    // MARK: - Init
 
     /// Creates the observer and begins monitoring protected data availability.
     /// - Parameters:
@@ -59,13 +62,11 @@ public final class ProtectedDataObserver: ProtectedDataObserving, Sendable {
         }
     }
 
-    // MARK: - Properties
+    // MARK: - Implementation
 
     public var state: ProtectedDataState {
         lock.withLock { $0.state }
     }
-
-    // MARK: - Stream
 
     public var stateStream: AsyncStream<ProtectedDataState> {
         let id = UUID()
@@ -81,8 +82,6 @@ public final class ProtectedDataObserver: ProtectedDataObserving, Sendable {
             continuation.yield(current)
         }
     }
-
-    // MARK: - Public
 
     /// Suspends until protected data becomes available, returning immediately if it already is.
     public func waitUntilAvailable() async {

@@ -5,6 +5,9 @@ import UIKit
 ///
 /// Requires `@MainActor` for initialization.
 public final class AppearanceObserver: AppearanceObserving, Sendable {
+
+    // MARK: - Dependencies
+
     private struct LockedState: Sendable {
         var current: AppAppearance
         var continuations: [UUID: AsyncStream<AppAppearance>.Continuation] = [:]
@@ -13,7 +16,7 @@ public final class AppearanceObserver: AppearanceObserving, Sendable {
     private let lock: OSAllocatedUnfairLock<LockedState>
     nonisolated(unsafe) private var token: (any NSObjectProtocol)?
 
-    // MARK: - Initialization
+    // MARK: - Init
 
     /// Creates the observer and begins monitoring appearance changes.
     @MainActor
@@ -51,13 +54,11 @@ public final class AppearanceObserver: AppearanceObserving, Sendable {
         }
     }
 
-    // MARK: - Properties
+    // MARK: - Implementation
 
     public var current: AppAppearance {
         lock.withLock { $0.current }
     }
-
-    // MARK: - Stream
 
     public var appearanceStream: AsyncStream<AppAppearance> {
         let id = UUID()

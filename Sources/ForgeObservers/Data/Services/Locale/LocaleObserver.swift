@@ -3,6 +3,9 @@ import os
 
 /// Monitors locale changes via `NSLocale.currentLocaleDidChangeNotification`.
 public final class LocaleObserver: LocaleObserving, Sendable {
+
+    // MARK: - Dependencies
+
     private struct LockedState: Sendable {
         var current: AppLocale
         var continuations: [UUID: AsyncStream<AppLocale>.Continuation] = [:]
@@ -13,7 +16,7 @@ public final class LocaleObserver: LocaleObserving, Sendable {
     private let notificationCenter: NotificationCenter
     private let localeProvider: @Sendable () -> AppLocale
 
-    // MARK: - Initialization
+    // MARK: - Init
 
     /// Creates the observer and begins monitoring locale changes.
     /// - Parameters:
@@ -56,13 +59,11 @@ public final class LocaleObserver: LocaleObserving, Sendable {
         }
     }
 
-    // MARK: - Properties
+    // MARK: - Implementation
 
     public var current: AppLocale {
         lock.withLock { $0.current }
     }
-
-    // MARK: - Stream
 
     public var localeStream: AsyncStream<AppLocale> {
         let id = UUID()

@@ -4,6 +4,9 @@ import os
 
 /// Monitors network connectivity via `NWPathMonitor`.
 public final class ConnectivityObserver: ConnectivityObserving, Sendable {
+
+    // MARK: - Dependencies
+
     private struct LockedState: Sendable {
         var status: ConnectivityStatus = .disconnected
         var continuations: [UUID: AsyncStream<ConnectivityStatus>.Continuation] = [:]
@@ -13,7 +16,7 @@ public final class ConnectivityObserver: ConnectivityObserving, Sendable {
     private let monitorQueue = DispatchQueue(label: "forge.connectivity.monitor")
     private let lock = OSAllocatedUnfairLock(initialState: LockedState())
 
-    // MARK: - Initialization
+    // MARK: - Init
 
     /// Creates the observer and begins monitoring network path changes.
     public init() {
@@ -41,13 +44,11 @@ public final class ConnectivityObserver: ConnectivityObserving, Sendable {
         }
     }
 
-    // MARK: - Properties
+    // MARK: - Implementation
 
     public var status: ConnectivityStatus {
         lock.withLock { $0.status }
     }
-
-    // MARK: - Stream
 
     public var statusStream: AsyncStream<ConnectivityStatus> {
         let id = UUID()

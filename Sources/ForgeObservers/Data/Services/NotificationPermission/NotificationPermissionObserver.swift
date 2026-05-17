@@ -5,6 +5,9 @@ import UserNotifications
 /// Monitors push notification permission by re-checking `UNUserNotificationCenter`
 /// on each foreground transition.
 public final class NotificationPermissionObserver: NotificationPermissionObserving, Sendable {
+
+    // MARK: - Dependencies
+
     private struct LockedState: Sendable {
         var status: NotificationPermissionStatus = .notDetermined
         var continuations: [UUID: AsyncStream<NotificationPermissionStatus>.Continuation] = [:]
@@ -13,7 +16,7 @@ public final class NotificationPermissionObserver: NotificationPermissionObservi
     private let lock = OSAllocatedUnfairLock(initialState: LockedState())
     nonisolated(unsafe) private var token: (any NSObjectProtocol)?
 
-    // MARK: - Initialization
+    // MARK: - Init
 
     /// Creates the observer and performs an initial permission check.
     public init() {
@@ -40,13 +43,11 @@ public final class NotificationPermissionObserver: NotificationPermissionObservi
         }
     }
 
-    // MARK: - Properties
+    // MARK: - Implementation
 
     public var status: NotificationPermissionStatus {
         lock.withLock { $0.status }
     }
-
-    // MARK: - Stream
 
     public var statusStream: AsyncStream<NotificationPermissionStatus> {
         let id = UUID()
@@ -62,8 +63,6 @@ public final class NotificationPermissionObserver: NotificationPermissionObservi
             continuation.yield(current)
         }
     }
-
-    // MARK: - Public
 
     /// Fetches the current notification authorization status and broadcasts any change.
     public func refresh() async {
